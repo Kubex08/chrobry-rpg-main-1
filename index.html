@@ -85,12 +85,12 @@
         </div>
       </div>
     </div>
-    <!-- Przyciski akcji - prawa strona pod mini-mapą -->
     <div class="action-buttons-panel">
       <div class="action-btn-item btn-icon" id="questBtn" title="Zadania (Q)">📜</div>
       <div class="action-btn-item btn-icon" id="statsBtn" title="Statystyki (R)">📊</div>
       <div class="action-btn-item btn-icon" id="interactBtn" title="Interakcja (F)">💬</div>
       <div class="action-btn-item btn-icon" id="inventoryBtn" title="Skarbiec (E)">🎒</div>
+      <div class="action-btn-item btn-icon" id="craftingBtn" title="Kraftowanie (C)" onclick="toggleCrafting()">⚒️</div>
     </div>
 
     <!-- Gałka analogowa (lewy dolny róg) -->
@@ -99,7 +99,6 @@
       <div class="joystick-stick" id="joystickStick"></div>
     </div>
 
-    <!-- Przyciski akcji (prawy dolny róg) -->
     <div class="action-buttons">
       <button class="action-btn action-btn-b" id="actionBtnB" title="Atak projectile (B)">
         <span class="action-btn-emoji">🏹</span>
@@ -108,6 +107,10 @@
       <button class="action-btn action-btn-a" id="actionBtnA" title="Atak ręcz (A)">
         <span class="action-btn-emoji">⚔️</span>
         <div class="action-btn-cooldown" id="cooldownA"></div>
+      </button>
+      <button class="action-btn" id="actionBtnUlt" title="Ult atak (U)" onclick="fireUltimate()" style="background: linear-gradient(135deg, rgba(139,92,246,0.6), rgba(168,85,247,0.7)); border-color: rgba(139,92,246,0.7);">
+        <span class="action-btn-emoji">⚡</span>
+        <div class="action-btn-cooldown" id="cooldownUlt"></div>
       </button>
     </div>
   </div>
@@ -705,6 +708,19 @@
       <!-- Przycisk zamknij -->
       <button class="btn btn-secondary" id="closeInventoryBtn"
         style="width:100%; padding:14px; font-size:18px; font-weight:700;">❌ Zamknij Skarbiec</button>
+    </div>
+  </div>
+
+  <!-- Modal Kraftowanie -->
+  <div class="modal" id="craftingModal">
+    <div class="panel">
+      <button class="modal-close" aria-label="Zamknij" onclick="toggleCrafting()">×</button>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; margin-top:-8px;">
+        <span style="font-size:36px; text-shadow: 0 2px 8px rgba(0,0,0,0.5);">⚒️</span>
+        <h2 style="font-size:28px; font-weight:800; margin:0; color:rgba(255,255,255,0.95); text-shadow: 0 2px 8px rgba(0,0,0,0.5);">KRAFTOWANIE</h2>
+      </div>
+      <div id="craftingRecipes" style="display:flex; flex-direction:column; gap:0;"></div>
+      <button class="btn btn-secondary" onclick="toggleCrafting()" style="width:100%; padding:14px; font-size:18px; font-weight:700; margin-top:16px;">❌ Zamknij</button>
     </div>
   </div>
 

@@ -47,6 +47,9 @@ let state = JSON.parse(localStorage.getItem('chrobry_save_v2')) || {
   rangedDamage: 16, // Siła ataku projectile
   pickupMagnetRange: 0, // Zasięg przyciągania dropów (w pikselach)
   levelUpPoints: 0, // Punkty do wykorzystania przy levelowaniu
+  ultCooldown: 0, // Cooldown ult ataku
+  treeRespawnTimer: 0, // Timer respawnu drzew
+  pinballCooldown: 0, // Cooldown kolizji ciałem
   meleeSpin: null,
   lastAttackType: null, // 'melee' or 'ranged' - ostatni typ ataku gracza
   enemies: [], pickups: [], projectiles: [],
@@ -537,6 +540,14 @@ addEventListener('keydown', (e) => {
     // Strzał projectile na desktopie (bez targetu - strzela w kierunku kursora)
     fireArrow(null);
   }
+  if (e.key.toLowerCase() === 'u') {
+    e.preventDefault();
+    fireUltimate();
+  }
+  if (e.key.toLowerCase() === 'c') {
+    e.preventDefault();
+    toggleCrafting();
+  }
   if (e.key === '?' || e.key === '/') {
     e.preventDefault();
     toggleHelp();
@@ -570,6 +581,11 @@ addEventListener('keydown', (e) => {
     }
     if (helpModal && helpModal.style.display === 'flex') {
       helpModal.style.display = 'none';
+      state.paused = false;
+    }
+    const craftingModal = document.getElementById('craftingModal');
+    if (craftingModal && craftingModal.style.display === 'flex') {
+      craftingModal.style.display = 'none';
       state.paused = false;
     }
     // Level up modal można zamknąć przez Escape (punkty pozostają)
@@ -675,6 +691,16 @@ function updateHUD(force = false) {
     const rangedPercent = rangedMaxCD > 0 ? Math.min(100, (rangedCD / rangedMaxCD) * 100) : 0;
     cooldownB.style.height = `${rangedPercent}%`;
     cooldownB.style.opacity = rangedCD > 0 ? '0.7' : '0';
+  }
+
+  // Ult cooldown indicator
+  const cooldownUlt = document.getElementById('cooldownUlt');
+  if (cooldownUlt) {
+    const ultCD = state.ultCooldown || 0;
+    const ultMaxCD = 2000;
+    const ultPercent = ultMaxCD > 0 ? Math.min(100, (ultCD / ultMaxCD) * 100) : 0;
+    cooldownUlt.style.height = `${ultPercent}%`;
+    cooldownUlt.style.opacity = ultCD > 0 ? '0.7' : '0';
   }
 
   updateQuestLog();
@@ -861,9 +887,9 @@ document.getElementById('invAppleClick').addEventListener('click', () => {
     setTimeout(() => { btn.style.animation = ''; }, 600);
 
     state.inventory.apples--;
-    state.hp = clamp(state.hp + 1, 0, state.hpMax);
+    state.hp = clamp(state.hp + 8, 0, state.hpMax);
     animateBar('hp', (oldHP / state.hpMax) * 100, (state.hp / state.hpMax) * 100);
-    toast('🍎 +1HP');
+    toast('🍎 +8HP');
     updateInventory();
     updateHUD();
     // 10% chance to drop seed
@@ -890,17 +916,20 @@ document.getElementById('healWithApplesBtn').addEventListener('click', () => {
   const btn = document.getElementById('healWithApplesBtn');
   const oldHP = state.hp;
   const hpNeeded = state.hpMax - state.hp;
-  const applesToEat = Math.min(state.inventory.apples, hpNeeded);
+  const applesToEat = Math.min(state.inventory.apples, Math.ceil(hpNeeded / 8));
   let seedsGained = 0;
+  let totalHeal = 0;
 
   // Animation
   btn.style.animation = 'consumeApple 0.5s ease-in-out';
   setTimeout(() => { btn.style.animation = ''; }, 500);
 
-  // Eat apples
+  // Eat apples (each heals 8 HP)
   for (let i = 0; i < applesToEat; i++) {
     state.inventory.apples--;
-    state.hp = clamp(state.hp + 1, 0, state.hpMax);
+    const before = state.hp;
+    state.hp = clamp(state.hp + 8, 0, state.hpMax);
+    totalHeal += state.hp - before;
 
     // 10% chance to drop seed for each apple
     if (Math.random() < 0.1) {
@@ -911,7 +940,7 @@ document.getElementById('healWithApplesBtn').addEventListener('click', () => {
 
   // Update UI
   animateBar('hp', (oldHP / state.hpMax) * 100, (state.hp / state.hpMax) * 100);
-  toast(`🍎 Zjedzono ${applesToEat} jabłek! +${applesToEat}HP${seedsGained > 0 ? ` 🌱 +${seedsGained} pestek` : ''}`);
+  toast(`🍎 Zjedzono ${applesToEat} jabłek! +${totalHeal}HP${seedsGained > 0 ? ` 🌱 +${seedsGained} pestek` : ''}`);
   updateInventory();
   updateHUD();
 });
@@ -988,6 +1017,127 @@ if (inventoryModalClose) {
     state.plantingMode = false;
     inventoryModal.style.display = 'none';
   });
+}
+
+// === Crafting System ===
+const CRAFTING_RECIPES = [
+  {
+    id: 'upgrade_sword',
+    name: '🗡️ Ulepsz Miecz',
+    desc: '+2 obrażeń w zwarciu',
+    cost: { wood: 10, gold: 5 },
+    action: () => { state.meleeDamage += 2; toast(`🗡️ Miecz ulepszony! Obrażenia: ${state.meleeDamage}`); }
+  },
+  {
+    id: 'upgrade_bow',
+    name: '🏹 Ulepsz Łuk',
+    desc: '+2 obrażeń z dystansu',
+    cost: { wood: 8, gold: 5 },
+    action: () => { state.rangedDamage += 2; toast(`🏹 Łuk ulepszony! Obrażenia: ${state.rangedDamage}`); }
+  },
+  {
+    id: 'hp_potion',
+    name: '❤️ Mikstura HP',
+    desc: 'Pełne zdrowie',
+    cost: { apples: 3, meat: 2 },
+    action: () => {
+      const oldHP = state.hp;
+      state.hp = state.hpMax;
+      animateBar('hp', (oldHP / state.hpMax) * 100, 100);
+      toast('❤️ Pełne zdrowie!');
+    }
+  },
+  {
+    id: 'mp_potion',
+    name: '🔷 Mikstura MP',
+    desc: 'Pełna moc',
+    cost: { mead: 3, apples: 2 },
+    action: () => {
+      const oldMP = state.mp;
+      state.mp = state.mpMax;
+      animateBar('mp', (oldMP / state.mpMax) * 100, 100);
+      toast('🔷 Pełna moc!');
+    }
+  }
+];
+
+function canCraft(recipe) {
+  for (const [resource, amount] of Object.entries(recipe.cost)) {
+    if (resource === 'gold') {
+      if (state.gold < amount) return false;
+    } else {
+      if ((state.inventory[resource] || 0) < amount) return false;
+    }
+  }
+  return true;
+}
+
+function craft(recipeId) {
+  const recipe = CRAFTING_RECIPES.find(r => r.id === recipeId);
+  if (!recipe) return;
+  if (!canCraft(recipe)) {
+    toast('❌ Brak surowców!');
+    return;
+  }
+  // Deduct resources
+  for (const [resource, amount] of Object.entries(recipe.cost)) {
+    if (resource === 'gold') {
+      state.gold -= amount;
+    } else {
+      state.inventory[resource] -= amount;
+    }
+  }
+  // Execute recipe
+  recipe.action();
+  updateCraftingModal();
+  updateInventory();
+  updateHUD();
+}
+
+function updateCraftingModal() {
+  const container = document.getElementById('craftingRecipes');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const recipe of CRAFTING_RECIPES) {
+    const available = canCraft(recipe);
+    const costText = Object.entries(recipe.cost).map(([r, a]) => {
+      const icons = { wood: '🪵', gold: '💰', apples: '🍎', meat: '🍖', mead: '🍾' };
+      return `${icons[r] || r} ${a}`;
+    }).join(' + ');
+
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:16px 20px; font-size:17px; 
+      background:linear-gradient(135deg, ${available ? 'rgba(139,92,246,0.8), rgba(124,58,237,0.9)' : 'rgba(50,50,50,0.6), rgba(40,40,40,0.7)'}); 
+      border:3px solid ${available ? 'rgba(139,92,246,0.7)' : 'rgba(100,100,100,0.4)'}; 
+      opacity:${available ? '1' : '0.5'}; cursor:${available ? 'pointer' : 'not-allowed'};
+      margin-bottom:10px; width:100%; border-radius:14px; color:#fff; font-weight:700;`;
+    btn.innerHTML = `
+      <div style="text-align:left;">
+        <div style="font-size:18px; margin-bottom:4px;">${recipe.name}</div>
+        <div style="font-size:13px; opacity:0.8;">${recipe.desc}</div>
+        <div style="font-size:14px; margin-top:6px; color:${available ? '#a78bfa' : '#888'};">${costText}</div>
+      </div>
+      <div style="font-size:24px;">${available ? '✅' : '🔒'}</div>
+    `;
+    if (available) {
+      btn.addEventListener('click', () => craft(recipe.id));
+    }
+    container.appendChild(btn);
+  }
+}
+
+function toggleCrafting() {
+  const craftingModal = document.getElementById('craftingModal');
+  if (!craftingModal) return;
+  if (craftingModal.style.display === 'flex') {
+    state.paused = false;
+    craftingModal.style.display = 'none';
+  } else {
+    state.paused = true;
+    updateCraftingModal();
+    craftingModal.style.display = 'flex';
+  }
 }
 
 // === Stats Modal ===
@@ -1645,10 +1795,7 @@ function startMeleeSpin() {
 
 function fireArrow(target) {
   if (state.attack.cooldown > 0 || state.paused) return;
-  if (state.mp < 3) return; // koszt many (zmniejszony z 6 na 3)
-  const oldMP = state.mp;
-  state.mp = clamp(state.mp - 3, 0, state.mpMax); // Zmniejszony koszt many z 6 na 3
-  animateBar('mp', (oldMP / state.mpMax) * 100, (state.mp / state.mpMax) * 100);
+  // Łuk nie zabiera MP
   state.attack.cooldown = state.attack.cdRanged;
   let ax, ay;
   if (target && target.x !== undefined && target.y !== undefined) {
@@ -1700,6 +1847,78 @@ function fireArrow(target) {
   });
 
   state.lastAttackType = 'ranged'; // Zapisz typ ataku dla dzieci
+}
+
+// === Ult Attack (AoE) — costs MP ===
+function fireUltimate() {
+  if (state.ultCooldown > 0 || state.paused) return;
+  if (state.mp < 15) {
+    toast('🔷 Za mało mocy! (potrzeba 15 MP)');
+    return;
+  }
+  const oldMP = state.mp;
+  state.mp = clamp(state.mp - 15, 0, state.mpMax);
+  animateBar('mp', (oldMP / state.mpMax) * 100, (state.mp / state.mpMax) * 100);
+  state.ultCooldown = 2000; // 2 sekundy cooldown
+
+  const ultRadius = 150;
+  const ultDmg = state.meleeDamage * 1.5; // 1.5x obrażenia melee
+  let hitCount = 0;
+
+  // Damage all enemies in radius
+  for (const e of state.enemies) {
+    let dx = e.x - state.pos.x, dy = e.y - state.pos.y;
+    if (Math.abs(dx) > state.world.width / 2) dx = dx > 0 ? dx - state.world.width : dx + state.world.width;
+    if (Math.abs(dy) > state.world.height / 2) dy = dy > 0 ? dy - state.world.height : dy + state.world.height;
+    const dist = Math.hypot(dx, dy);
+    if (dist < ultRadius) {
+      e.hp -= ultDmg;
+      hitCount++;
+      // Knockback
+      const kbLen = Math.hypot(dx, dy) || 1;
+      state.enemyKnockback[e.id] = { x: (dx / kbLen) * 8, y: (dy / kbLen) * 8, t: 200 };
+      enemyHitFlashes[e.id] = 200;
+      // Floating damage
+      const s = worldToScreen(e.x, e.y);
+      fly.push({ x: e.x, y: e.y, msg: `-${Math.round(ultDmg)}`, color: '#c084fc', size: 28, t: 1000, vx: 0, vy: 0 });
+    }
+  }
+
+  // Damage megabeasts in radius
+  for (const mb of state.megabeasts) {
+    let dx = mb.x - state.pos.x, dy = mb.y - state.pos.y;
+    if (Math.abs(dx) > state.world.width / 2) dx = dx > 0 ? dx - state.world.width : dx + state.world.width;
+    if (Math.abs(dy) > state.world.height / 2) dy = dy > 0 ? dy - state.world.height : dy + state.world.height;
+    const dist = Math.hypot(dx, dy);
+    if (dist < ultRadius) {
+      mb.hp -= ultDmg;
+      hitCount++;
+      enemyHitFlashes[mb.id] = 200;
+      fly.push({ x: mb.x, y: mb.y, msg: `-${Math.round(ultDmg)}`, color: '#c084fc', size: 28, t: 1000, vx: 0, vy: 0 });
+    }
+  }
+
+  // Visual particles effect (shockwave)
+  for (let i = 0; i < 24; i++) {
+    const ang = (i / 24) * Math.PI * 2;
+    particles.push({
+      x: state.pos.x, y: state.pos.y,
+      vx: Math.cos(ang) * 4, vy: Math.sin(ang) * 4,
+      color: '#c084fc', size: 4, t: 500
+    });
+  }
+
+  // Screenshake
+  screenShake.t = 200;
+  screenShake.intensity = 10;
+
+  if (hitCount > 0) {
+    toast(`⚡ Ult! Trafiono ${hitCount} wrogów!`);
+  } else {
+    toast('⚡ Ult! Brak wrogów w zasięgu.');
+  }
+
+  state.lastAttackType = 'ult';
 }
 
 function killEnemy(e) {
@@ -4188,6 +4407,71 @@ function step(dt) {
     const dropDir = { x: rand(-0.5, 0.5), y: -0.5 };
     spawnPickup(Math.random() < .5 ? 'meat' : 'mead', rand(0, state.world.width), rand(0, state.world.height), undefined, dropDir);
   }
+
+  // === Ult cooldown ===
+  if (state.ultCooldown > 0) state.ultCooldown -= dt;
+
+  // === Tree Respawn — co 60 sekund spawnuj nowe drzewa jeśli jest ich za mało ===
+  if (state.treeRespawnTimer === undefined) state.treeRespawnTimer = 0;
+  state.treeRespawnTimer += dt;
+  if (state.treeRespawnTimer >= 60000) {
+    state.treeRespawnTimer = 0;
+    const deciduousCount = state.trees.filter(t => t.type === '🌳').length;
+    if (deciduousCount < 50) {
+      const newTrees = Math.round(rand(3, 5));
+      for (let i = 0; i < newTrees; i++) {
+        state.trees.push({
+          x: rand(0, state.world.width),
+          y: rand(0, state.world.height),
+          type: '🌳',
+          lastDrop: 0,
+          hp: 2,
+          hpMax: 2,
+          size: rand(2.2, 2.7),
+          id: Math.random().toString(36).slice(2)
+        });
+      }
+      toast(`🌳 ${newTrees} nowych drzew wyrosło!`);
+    }
+  }
+
+  // === Pinball / Kolizja atak ciałem ===
+  if (state.pinballCooldown === undefined) state.pinballCooldown = 0;
+  if (state.pinballCooldown > 0) state.pinballCooldown -= dt;
+  const playerSpeed = Math.hypot(state.vel.x, state.vel.y);
+  if (playerSpeed > 1.5 && state.pinballCooldown <= 0) {
+    for (const e of state.enemies) {
+      let dx = e.x - state.pos.x, dy = e.y - state.pos.y;
+      if (Math.abs(dx) > state.world.width / 2) dx = dx > 0 ? dx - state.world.width : dx + state.world.width;
+      if (Math.abs(dy) > state.world.height / 2) dy = dy > 0 ? dy - state.world.height : dy + state.world.height;
+      const dist = Math.hypot(dx, dy);
+      if (dist < COLLIDE.playerR + COLLIDE.enemyR) {
+        // Zadaj obrażenia wrogowi
+        const pinballDmg = Math.round(state.meleeDamage * 0.5);
+        e.hp -= pinballDmg;
+        // Knockback wroga w kierunku ruchu gracza
+        const kbLen = dist || 1;
+        state.enemyKnockback[e.id] = { x: (dx / kbLen) * 10, y: (dy / kbLen) * 10, t: 300 };
+        enemyHitFlashes[e.id] = 200;
+        fly.push({ x: e.x, y: e.y, msg: `💥-${pinballDmg}`, color: '#fb923c', size: 22, t: 800, vx: 0, vy: 0 });
+        // Gracz traci HP
+        const oldHP = state.hp;
+        state.hp = clamp(state.hp - 5, 0, state.hpMax);
+        fly.push({ x: state.pos.x, y: state.pos.y, msg: '-5 HP', color: '#ef4444', size: 18, t: 600, vx: 0, vy: 0 });
+        // Cooldown kolizji
+        state.pinballCooldown = 500;
+        // Particles
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: (state.pos.x + e.x) / 2, y: (state.pos.y + e.y) / 2,
+            vx: rand(-3, 3), vy: rand(-3, 3),
+            color: '#fb923c', size: 3, t: 400
+          });
+        }
+        break; // Tylko jedna kolizja na raz
+      }
+    }
+  }
 }
 
 // === Render ===
@@ -4218,8 +4502,8 @@ function draw() {
       if (isFlashing) {
         ctx.save();
         ctx.globalAlpha = 0.9;
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#ffffff';
+        // removed shadowBlur
+        // removed shadowColor
         ctx.fillText(emoji, s.x, s.y);
         ctx.restore();
       } else {
@@ -4259,8 +4543,8 @@ function draw() {
       if (isFlashing) {
         ctx.save();
         ctx.globalAlpha = 0.9;
-        ctx.shadowBlur = 30;
-        ctx.shadowColor = '#ffffff';
+        // removed shadowBlur
+        // removed shadowColor
         // Hiper Ultra: 2 emoji (lustrzane odbicie) dla wilka, dzika i żmii - stykają się tyłami głów
         if (mb.isHiperUltra && mb.type !== 3) {
           ctx.fillText(mbEmoji, s.x - fontSize * 0.6, s.y); // Lewe emoji (patrzy w lewo)
@@ -4287,8 +4571,8 @@ function draw() {
 
         const pulse = 0.5 + Math.sin(Date.now() / 100) * 0.3; // Pulsujący efekt
         ctx.globalAlpha = pulse * 0.7;
-        ctx.shadowBlur = 35 + Math.sin(Date.now() / 80) * 15;
-        ctx.shadowColor = glowColor;
+        // removed shadowBlur
+        // removed shadowColor
         // Hiper Ultra: 2 emoji (lustrzane odbicie) dla wilka, dzika i żmii - stykają się tyłami głów
         if (mb.isHiperUltra && mb.type !== 3) {
           ctx.fillText(mbEmoji, s.x - fontSize * 0.6, s.y); // Lewe emoji (patrzy w lewo)
@@ -4311,17 +4595,17 @@ function draw() {
         ctx.save();
         if (mb.isHiperUltra) {
           // Hiper Ultra megabestia - największy, najbardziej intensywny glow (czerwony/pomarańczowy)
-          ctx.shadowBlur = 50;
-          ctx.shadowColor = '#ff0000'; // Czerwony glow dla hiper ultra
+          // removed shadowBlur
+          // removed shadowColor
         } else if (mb.isUltra) {
           // Ultra megabestia - większy, bardziej intensywny glow (pomarańczowy/purpurowy)
-          ctx.shadowBlur = 35;
-          ctx.shadowColor = '#ff6b00'; // Pomarańczowy glow dla ultra
+          // removed shadowBlur
+          // removed shadowColor
           ctx.globalAlpha = 0.95;
         } else {
           // Normalna megabestia - czerwony glow
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = '#ef4444';
+          // removed shadowBlur
+          // removed shadowColor
         }
         // Hiper Ultra: 2 emoji (lustrzane odbicie) dla wilka, dzika i żmii - stykają się tyłami głów
         if (mb.isHiperUltra && mb.type !== 3) {
@@ -4377,8 +4661,8 @@ function draw() {
       ctx.font = '75px "Apple Color Emoji", "Segoe UI Emoji"'; // 30px * 2.5 = 75px
       if (isFlashing) {
         ctx.globalAlpha = 0.9;
-        ctx.shadowBlur = 25;
-        ctx.shadowColor = '#ffffff';
+        // removed shadowBlur
+        // removed shadowColor
       } else {
         ctx.globalAlpha = 0.8;
       }
@@ -4392,11 +4676,11 @@ function draw() {
       const nestEmoji = enemyDef ? enemyDef.emoji : '🏰';
 
       if (isFlashing) {
-        // Klasyczne mruganie - biały flash z cieniem
+        // Klasyczne mruganie - biały flash
         ctx.save();
         ctx.globalAlpha = 0.9;
-        ctx.shadowBlur = 25;
-        ctx.shadowColor = '#ffffff';
+        // removed shadowBlur
+        // removed shadowColor
         ctx.fillText(nestEmoji, s.x, s.y);
         ctx.restore();
       } else {
@@ -4442,14 +4726,14 @@ function draw() {
           ctx.globalAlpha = alpha * 0.8; // Zwiększona widoczność
           ctx.strokeStyle = '#4ade80'; // Zielony kolor
           ctx.lineWidth = 3; // Grubsza linia dla lepszej widoczności
-          ctx.shadowBlur = 15;
-          ctx.shadowColor = '#4ade80';
+          // removed shadowBlur
+          // removed shadowColor
           ctx.beginPath();
           ctx.moveTo(playerScreenPos.x, playerScreenPos.y);
           ctx.lineTo(s.x, s.y);
           ctx.stroke();
 
-          // Dodaj animowane cząsteczki wzdłuż linii (poruszające się w kierunku gracza)
+          // Dodatkowy efekt wzdłuż linii
           const particleCount = Math.max(5, Math.floor(screenDist / 15));
           const timeOffset = (Date.now() % 2000) / 2000; // Animacja w pętli 2 sekundy
           for (let i = 0; i < particleCount; i++) {
@@ -4458,7 +4742,7 @@ function draw() {
             const py = playerScreenPos.y + dy * t;
             ctx.globalAlpha = alpha * 1.0;
             ctx.fillStyle = '#4ade80';
-            ctx.shadowBlur = 10;
+            // removed shadowBlur
             ctx.beginPath();
             ctx.arc(px, py, 3, 0, Math.PI * 2);
             ctx.fill();
@@ -4469,8 +4753,8 @@ function draw() {
           // Efekt świecenia wokół przyciąganego przedmiotu (rysuj przed normalnym pickupem)
           ctx.save();
           ctx.globalAlpha = alpha * 0.6;
-          ctx.shadowBlur = 25;
-          ctx.shadowColor = '#4ade80';
+          // removed shadowBlur
+          // removed shadowColor
           ctx.fillText(emo, s.x, s.y);
           ctx.restore();
         }
@@ -4505,8 +4789,8 @@ function draw() {
       if (enemyHitFlashes[e.id] && enemyHitFlashes[e.id] > 0) {
         ctx.save();
         ctx.globalAlpha = 0.8;
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#ffffff';
+        // removed shadowBlur
+        // removed shadowColor
         ctx.fillText(e.emoji, s.x, s.y);
         ctx.restore();
       } else {
@@ -4595,95 +4879,36 @@ function draw() {
   ctx.font = `${projectileFontSize}px "Apple Color Emoji", "Segoe UI Emoji"`;
   for (const pr of state.projectiles) {
     renderWithWrapAround(pr.x, pr.y, (s) => {
-      // Ulepszony trail effect - dynamiczna animacja lecącej strzały
+      // projectiles - optimized rendering with simplified trail
       if (pr.trail && pr.trail.length > 1) {
         ctx.save();
-
-        // Rysuj trail jako gradient od jasnego do ciemnego z efektem świetlnym
-        for (let i = 0; i < pr.trail.length - 1; i++) {
-          const t1 = pr.trail[i];
-          const t2 = pr.trail[i + 1];
-          const s1 = worldToScreen(t1.x, t1.y);
-          const s2 = worldToScreen(t2.x, t2.y);
-
-          // Alpha zmniejsza się wzdłuż trail - bardziej wyraźny efekt
-          const progress = i / (pr.trail.length - 1);
-          const alpha = (1 - progress) * 0.8; // Większa alpha dla bardziej widocznego trail
-          ctx.globalAlpha = alpha;
-
-          // Gradient kolorów MP - od jasnego niebieskiego do ciemnego
-          const intensity = 1 - progress;
-          const r = Math.floor(59 + (100 * intensity)); // Od ciemnego do jasnego niebieskiego
-          const g = Math.floor(130 + (125 * intensity));
-          const b = Math.floor(246 * intensity);
-          ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
-
-          // Grubość linii zmniejsza się wzdłuż trail - grubszy trail
-          ctx.lineWidth = 8 - (progress * 6);
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-
-          // Większy shadow blur dla efektu świetlnego - niebieski
-          ctx.shadowBlur = 20 * intensity;
-          ctx.shadowColor = `rgba(59, 130, 246, ${intensity * 0.8})`;
-
-          ctx.beginPath();
-          ctx.moveTo(s1.x, s1.y);
-          ctx.lineTo(s2.x, s2.y);
-          ctx.stroke();
-
-          // Dodatkowy efekt świetlny - małe kółka wzdłuż trail - niebieski
-          if (i % 2 === 0 && intensity > 0.3) {
-            ctx.save();
-            ctx.globalAlpha = intensity * 0.4;
-            ctx.fillStyle = `rgba(96, 165, 250, ${intensity})`;
-            ctx.shadowBlur = 15 * intensity;
-            ctx.shadowColor = `rgba(59, 130, 246, ${intensity})`;
-            ctx.beginPath();
-            ctx.arc(s1.x, s1.y, 3 * intensity, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
-        }
-
-        ctx.restore();
-      } else {
-        // Fallback - prosty trail dla starych strzał - niebieski (MP)
-        ctx.save();
-        ctx.globalAlpha = 0.3;
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 3;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#3b82f6';
-        const trailLength = 15;
-        const trailX = s.x - pr.vx * trailLength;
-        const trailY = s.y - pr.vy * trailLength;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        // Draw main trail path once
         ctx.beginPath();
-        ctx.moveTo(trailX, trailY);
-        ctx.lineTo(s.x, s.y);
+        const startPos = worldToScreen(pr.trail[0].x, pr.trail[0].y);
+        ctx.moveTo(startPos.x, startPos.y);
+        
+        for (let i = 1; i < pr.trail.length; i++) {
+          const tp = worldToScreen(pr.trail[i].x, pr.trail[i].y);
+          ctx.lineTo(tp.x, tp.y);
+        }
+        
+        // Use a simple colored line instead of per-segment state changes
+        ctx.globalAlpha = 0.4;
+        ctx.strokeStyle = pr.isPoison ? '#10b981' : '#3b82f6';
+        ctx.lineWidth = 4;
         ctx.stroke();
         ctx.restore();
       }
 
-      // Strzała z rotacją i intensywnym świeceniem
+      // Strzała z rotacją
       ctx.save();
       ctx.translate(s.x, s.y);
       if (pr.rotation !== undefined) {
         ctx.rotate(pr.rotation);
       }
-
-      // Większy shadow blur dla bardziej widocznego efektu świetlnego
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = 'rgba(255, 200, 0, 0.9)';
-
-      // Dodatkowy efekt glow - rysuj większą, półprzezroczystą kopię
-      ctx.save();
-      ctx.globalAlpha = 0.5;
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = 'rgba(255, 180, 0, 0.6)';
-      ctx.scale(1.2, 1.2);
-      ctx.fillText(pr.emoji, 0, 0);
-      ctx.restore();
 
       // Główna strzała
       ctx.fillText(pr.emoji, 0, 0);
@@ -4714,8 +4939,8 @@ function draw() {
     ctx.globalAlpha = 0.4;
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 4;
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = '#ffffff';
+    // removed shadowBlur
+    // removed shadowColor
     const prevAng = startAng + (prog - 0.1) * 2 * Math.PI;
     const prevSx = ps.x + Math.cos(prevAng) * r;
     const prevSy = ps.y + Math.sin(prevAng) * r;
@@ -4729,8 +4954,8 @@ function draw() {
     const swordFontSize = 28 + state.level;
     ctx.font = `${swordFontSize}px "Apple Color Emoji", "Segoe UI Emoji"`;
     ctx.save();
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#ffffff';
+    // removed shadowBlur
+    // removed shadowColor
     ctx.fillText('⚔️', sx, sy);
     ctx.restore();
   }
@@ -4742,8 +4967,8 @@ function draw() {
     const alpha = clamp(p.t / 800, 0, 1);
     ctx.globalAlpha = alpha;
     ctx.fillStyle = p.color;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = p.color;
+    // removed shadowBlur
+    // removed shadowColor
     ctx.beginPath();
     ctx.arc(s.x, s.y, p.size, 0, Math.PI * 2);
     ctx.fill();
@@ -4761,8 +4986,8 @@ function draw() {
     ctx.font = `bold ${(f.size || 20) * (f.scale || 1)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    // removed shadowBlur
+    // removed shadowColor
     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
     ctx.lineWidth = 2;
     ctx.strokeText(f.msg, s.x, s.y - (1000 - f.t) / 20);
@@ -4818,15 +5043,15 @@ function draw() {
     // Główny tekst
     ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     ctx.font = 'bold 48px system-ui, sans-serif';
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = `rgba(239, 68, 68, ${alpha})`;
+    // removed shadowBlur
+    // removed shadowColor
     ctx.fillText(text, centerX, centerY - 20);
 
     // Podtekst
     ctx.font = 'bold 28px system-ui, sans-serif';
     ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = `rgba(239, 68, 68, ${alpha * 0.7})`;
+    // removed shadowBlur
+    // removed shadowColor
     ctx.fillText(subText, centerX, centerY + 40);
 
     ctx.restore();
@@ -4899,8 +5124,8 @@ function drawMiniMap() {
       if (mb.isHiperUltra) {
         // Hiper Ultra megabestia - 2x większa niż Ultra na minimapie (21px * 2 = 42px), czerwona
         minimapCtx.font = '42px "Apple Color Emoji", "Segoe UI Emoji"';
-        minimapCtx.shadowBlur = 10;
-        minimapCtx.shadowColor = '#ff0000';
+        // removed shadowBlur
+        // removed shadowColor
         // Hiper Ultra: 2 emoji (lustrzane odbicie) dla wilka, dzika i żmii - stykają się tyłami głów
         if (mb.type !== 3) {
           minimapCtx.fillText(enemyDef.emoji, mbPos.x - 35, mbPos.y + 20); // Lewe emoji (patrzy w lewo)
@@ -4918,17 +5143,17 @@ function drawMiniMap() {
       } else if (mb.isUltra) {
         // Ultra megabestia - 1.5x większa na minimapie (14px * 1.5 = 21px), pomarańczowa
         minimapCtx.font = '21px "Apple Color Emoji", "Segoe UI Emoji"';
-        minimapCtx.shadowBlur = 6;
-        minimapCtx.shadowColor = '#ff6b00';
+        // removed shadowBlur
+        // removed shadowColor
         minimapCtx.fillText(enemyDef.emoji, mbPos.x - 10, mbPos.y + 10);
       } else {
         // Normalna megabestia - czerwona
         minimapCtx.font = '14px "Apple Color Emoji", "Segoe UI Emoji"';
-        minimapCtx.shadowBlur = 4;
-        minimapCtx.shadowColor = '#ef4444';
+        // removed shadowBlur
+        // removed shadowColor
         minimapCtx.fillText(enemyDef.emoji, mbPos.x - 7, mbPos.y + 7);
       }
-      minimapCtx.shadowBlur = 0;
+      // removed shadowBlur
     }
   }
 
