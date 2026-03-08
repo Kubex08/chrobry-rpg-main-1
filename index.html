@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>🧔 ChrobryRPG</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <canvas id="canvas"></canvas>
+  <!-- Mini-mapa w prawym górnym rogu -->
+  <canvas id="minimap" class="minimap"></canvas>
+  <div id="ui">
+    <!-- Nowy HUD - Modern Game Design -->
+    <div class="hud-container">
+      <!-- Górna sekcja: HP, MP, XP w jednej linii -->
+      <div class="hud-bars-section">
+        <div class="hud-bar-group">
+          <div class="hud-bar-label">
+            <span class="hud-icon">❤️</span>
+            <span class="hud-bar-text" id="hpNum">100/100</span>
+          </div>
+          <div class="hud-bar hp-bar">
+            <div class="hud-bar-fill hp-fill" id="hpFill" style="width:100%"></div>
+          </div>
+        </div>
+
+        <div class="hud-bar-group">
+          <div class="hud-bar-label">
+            <span class="hud-icon">🔷</span>
+            <span class="hud-bar-text" id="mpNum">50/50</span>
+          </div>
+          <div class="hud-bar mp-bar">
+            <div class="hud-bar-fill mp-fill" id="mpFill" style="width:100%"></div>
+          </div>
+        </div>
+
+        <div class="hud-bar-group">
+          <div class="hud-bar-label">
+            <span class="hud-icon">⭐</span>
+            <span class="hud-bar-text">L<span id="lvlNum">1</span> <span id="xpNum"
+                class="hud-xp-text">0/100</span></span>
+          </div>
+          <div class="hud-bar xp-bar">
+            <div class="hud-bar-fill xp-fill" id="xpFill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dolna sekcja: Inventory i statystyki -->
+      <div class="hud-stats-section">
+        <div class="hud-stats-row">
+          <div class="hud-stat-badge lives-badge" title="Życia">
+            <span class="hud-stat-icon">❤️</span>
+            <span class="hud-stat-value" id="livesDisplay">3</span>
+          </div>
+          <div class="hud-stat-badge gold-badge" title="Złoto">
+            <span class="hud-stat-icon">💰</span>
+            <span class="hud-stat-value" id="gold">0</span>
+          </div>
+        </div>
+
+        <div class="hud-inventory-row">
+          <div class="hud-inv-item" title="Jabłka">
+            <span class="hud-inv-icon">🍎</span>
+            <span class="hud-inv-count" id="hudApples">0</span>
+          </div>
+          <div class="hud-inv-item" title="Mięsiwo">
+            <span class="hud-inv-icon">🍖</span>
+            <span class="hud-inv-count" id="hudMeat">0</span>
+          </div>
+          <div class="hud-inv-item" title="Flaszki">
+            <span class="hud-inv-icon">🍾</span>
+            <span class="hud-inv-count" id="hudMead">0</span>
+          </div>
+          <div class="hud-inv-item" title="Drewno">
+            <span class="hud-inv-icon">🪵</span>
+            <span class="hud-inv-count" id="hudWood">0</span>
+          </div>
+          <div class="hud-inv-item btn-icon" id="saveBtn" title="Zapisz grę">
+            <span class="hud-inv-icon">💾</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Przyciski akcji - prawa strona pod mini-mapą -->
+    <div class="action-buttons-panel">
+      <div class="action-btn-item btn-icon" id="questBtn" title="Zadania (Q)">📜</div>
+      <div class="action-btn-item btn-icon" id="statsBtn" title="Statystyki (R)">📊</div>
+      <div class="action-btn-item btn-icon" id="interactBtn" title="Interakcja (F)">💬</div>
+      <div class="action-btn-item btn-icon" id="inventoryBtn" title="Skarbiec (E)">🎒</div>
+    </div>
+
+    <!-- Gałka analogowa (lewy dolny róg) -->
+    <div class="virtual-joystick" id="joystick">
+      <div class="joystick-base"></div>
+      <div class="joystick-stick" id="joystickStick"></div>
+    </div>
+
+    <!-- Przyciski akcji (prawy dolny róg) -->
+    <div class="action-buttons">
+      <button class="action-btn action-btn-b" id="actionBtnB" title="Atak projectile (B)">
+        <span class="action-btn-emoji">🏹</span>
+        <div class="action-btn-cooldown" id="cooldownB"></div>
+      </button>
+      <button class="action-btn action-btn-a" id="actionBtnA" title="Atak ręcz (A)">
+        <span class="action-btn-emoji">⚔️</span>
+        <div class="action-btn-cooldown" id="cooldownA"></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal level-up -->
+  <div class="modal" id="levelUpModal">
+    <div class="panel">
+      <button class="modal-close" aria-label="Zamknij">×</button>
+      <h1>🛡️ Awans na poziom <span id="lvlUpTo">2</span></h1>
+      <div
+        style="margin-bottom:24px; padding:20px; background:linear-gradient(135deg, rgba(16,185,129,0.3), rgba(5,150,105,0.3)); border:3px solid rgba(16,185,129,0.5); border-radius:16px; font-size:22px; font-weight:700; text-align:center; box-shadow: 0 4px 16px rgba(16,185,129,0.3);">
+        ⭐ Punkty do wykorzystania: <span id="levelUpPoints">1</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <button class="btn" id="upHP" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">❤️ Maks. HP</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upHPValue">100</span>
+        </button>
+        <button class="btn" id="upMP" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">🔷 Maks. Moc</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upMPValue">50</span>
+        </button>
+        <button class="btn" id="upSpeed" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">🏃 Prędkość ruchu</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upSpeedValue">2.8</span>
+        </button>
+        <button class="btn" id="upMeleeSpeed" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">⚔️ Prędkość ataku z bliska</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upMeleeSpeedValue">400ms</span>
+        </button>
+        <button class="btn" id="upMeleeDmg" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">🗡️ Siła ataku z bliska</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upMeleeDmgValue">18</span>
+        </button>
+        <button class="btn" id="upRangedSpeed" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">🏹 Prędkość ataku z daleka</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upRangedSpeedValue">300ms</span>
+        </button>
+        <button class="btn" id="upRangedDmg" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">💥 Siła ataku z daleka</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upRangedDmgValue">16</span>
+        </button>
+        <button class="btn" id="upMagnet" style="justify-content:space-between; text-align:left;">
+          <span style="font-size:18px;">🧲 Przyciąganie dropów</span>
+          <span style="font-size:18px; font-weight:700; opacity:0.9;" id="upMagnetValue">0px</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Quest Log / Start Screen / Help (Połączony) -->
+  <div class="modal" id="questModal">
+    <div class="panel">
+      <!-- Sekcja Start Screen (tylko gdy to start screen) -->
+      <div id="startScreenSection" style="margin-bottom:40px; display:none;">
+        <div style="text-align:center; margin: -24px -20px 40px -20px;">
+          <img src="media/chrobry-rpg.png" alt="Chrobry RPG"
+            style="width: 100%; height: auto; display: block; border-radius: 16px 16px 0 0; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
+          <div
+            style="display:flex; flex-direction:row; gap:12px; margin-bottom:40px; max-width:600px; margin-left:auto; margin-right:auto; justify-content:center; align-items:stretch;">
+            <div
+              style="padding:24px; background:linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.25)); border:3px solid rgba(239,68,68,0.5); border-radius:20px; font-size:24px; font-weight:800; box-shadow: 0 6px 20px rgba(239,68,68,0.3); flex:1; min-width:180px;">
+              <div style="font-size:18px; margin-bottom:8px; opacity:0.9; font-weight:600;">❤️ Życia</div>
+              <div style="font-size:36px; color:#fca5a5;"><span id="startScreenLives">3</span></div>
+            </div>
+            <div
+              style="padding:24px; background:linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.25)); border:3px solid rgba(245,158,11,0.5); border-radius:20px; font-size:24px; font-weight:800; box-shadow: 0 6px 20px rgba(245,158,11,0.3); flex:1; min-width:180px;">
+              <div style="font-size:18px; margin-bottom:8px; opacity:0.9; font-weight:600;">⭐ Poziom</div>
+              <div style="font-size:36px; color:#fcd34d;"><span id="startScreenLevel">1</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sekcja Quest Log -->
+      <div style="margin-bottom:40px;">
+        <div
+          style="text-align:center; margin-bottom:32px; padding-bottom:24px; border-bottom:3px solid rgba(245,158,11,0.4);">
+          <h2
+            style="font-size:36px; font-weight:900; margin:0; text-shadow: 0 4px 16px rgba(0,0,0,0.6); letter-spacing:1px; background: linear-gradient(135deg, #fbbf24, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+            📜 KSIĘGA ZADAŃ 📜</h2>
+          <p style="font-size:16px; margin-top:12px; opacity:0.8; font-style:italic;">"Zapisz swe czyny i dokonania w
+            tej świętej księdze"</p>
+        </div>
+        <div style="margin-bottom:12px">
+          <!-- Quest 1: Zasadź drzewo -->
+          <div
+            style="margin-bottom:20px; border:3px solid rgba(16,185,129,0.4); border-radius:20px; padding:24px; background:linear-gradient(135deg, rgba(0,0,0,0.5), rgba(20,30,20,0.6)); box-shadow: 0 6px 24px rgba(0,0,0,0.5);">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:16px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <span style="font-size:32px;">🌳</span>
+                <strong
+                  style="font-size:26px; font-weight:800; color:rgba(255,255,255,0.95); text-shadow: 0 2px 8px rgba(0,0,0,0.5);">I.
+                  Zasadź Drzewo</strong>
+              </div>
+              <div style="display:flex; align-items:center; gap:16px;">
+                <span id="quest1Status"
+                  style="color:#10b981; font-weight:800; font-size:20px; text-shadow: 0 2px 8px rgba(16,185,129,0.5); padding:8px 16px; background:rgba(16,185,129,0.2); border-radius:12px;">✓
+                  Ukończone</span>
+                <button class="btn-icon-small" id="quest1Toggle"
+                  style="font-size:24px; padding:12px 16px; min-width:52px; min-height:52px; background:rgba(79,70,229,0.4); border:2px solid rgba(79,70,229,0.6); border-radius:14px; cursor:pointer; transition:all 0.2s;"
+                  title="Rozwiń/Zwiń opis">▲</button>
+              </div>
+            </div>
+            <div id="quest1Description"
+              style="display:block; margin-top:20px; padding-top:20px; border-top:2px solid rgba(16,185,129,0.3);">
+              <p
+                style="margin:0; line-height:1.9; color:rgba(255,255,255,0.95); font-size:19px; font-style:italic; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">
+                "Wędrując po krainie, spostrzegasz, iż lasy są rzadkie i zubożałe. Zasadź swe pierwsze drzewo, aby
+                przywrócić naturze jej dawną chwałę. Zbierz ziarna z jabłek i użyj ich, aby zasadzić nowe drzewo na
+                mapie. Pamiętaj, iż przydomowy sad to dobre źródło jabłek, a Biały Sad jest piękny wiosną."
+              </p>
+            </div>
+          </div>
+
+          <!-- Quest 2: Spłodź syna -->
+          <div
+            style="margin-bottom:20px; border:3px solid rgba(236,72,153,0.4); border-radius:20px; padding:24px; background:linear-gradient(135deg, rgba(0,0,0,0.5), rgba(30,20,30,0.6)); box-shadow: 0 6px 24px rgba(0,0,0,0.5);">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:16px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <span style="font-size:32px;">👶</span>
+                <strong
+                  style="font-size:26px; font-weight:800; color:rgba(255,255,255,0.95); text-shadow: 0 2px 8px rgba(0,0,0,0.5);">II.
+                  Spłódź Syna</strong>
+              </div>
+              <div style="display:flex; align-items:center; gap:16px;">
+                <span id="quest2Status"
+                  style="color:#10b981; font-weight:800; font-size:20px; text-shadow: 0 2px 8px rgba(16,185,129,0.5); padding:8px 16px; background:rgba(16,185,129,0.2); border-radius:12px;">✓
+                  Ukończone</span>
+                <button class="btn-icon-small" id="quest2Toggle"
+                  style="font-size:24px; padding:12px 16px; min-width:52px; min-height:52px; background:rgba(79,70,229,0.4); border:2px solid rgba(79,70,229,0.6); border-radius:14px; cursor:pointer; transition:all 0.2s;"
+                  title="Rozwiń/Zwiń opis">▲</button>
+              </div>
+            </div>
+            <div id="quest2Description"
+              style="display:block; margin-top:20px; padding-top:20px; border-top:2px solid rgba(236,72,153,0.3);">
+              <p
+                style="margin:0 0 20px 0; line-height:1.9; color:rgba(255,255,255,0.95); font-size:19px; font-style:italic; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">
+                "Spotkaj niewiastę wędrującą po świecie. Aby spłodzić z nią potomka, musisz zdobyć 50 jabłek i 50
+                mięsiwa. Pamiętaj - los zrządza, iż jest równa szansa, że urodzi się syn lub córka!"
+              </p>
+              <div style="display:flex; flex-direction:column; gap:14px; margin-top:20px;">
+                <div
+                  style="padding:20px; background:linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.25)); border:3px solid rgba(239,68,68,0.5); border-radius:16px; font-size:20px; font-weight:700; text-align:center; box-shadow: 0 4px 16px rgba(239,68,68,0.3);">
+                  🍎 Jabłka: <span id="quest2Apples" style="font-size:24px; color:#fca5a5;">0</span>/50
+                </div>
+                <div
+                  style="padding:20px; background:linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.25)); border:3px solid rgba(245,158,11,0.5); border-radius:16px; font-size:20px; font-weight:700; text-align:center; box-shadow: 0 4px 16px rgba(245,158,11,0.3);">
+                  🍖 Mięsiwo: <span id="quest2Meat" style="font-size:24px; color:#fcd34d;">0</span>/50
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quest 3: Napisz książkę -->
+          <div
+            style="margin-bottom:20px; border:3px solid rgba(139,92,246,0.4); border-radius:20px; padding:24px; background:linear-gradient(135deg, rgba(0,0,0,0.5), rgba(20,20,30,0.6)); box-shadow: 0 6px 24px rgba(0,0,0,0.5);">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:16px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <span style="font-size:32px;">📖</span>
+                <strong
+                  style="font-size:26px; font-weight:800; color:rgba(255,255,255,0.95); text-shadow: 0 2px 8px rgba(0,0,0,0.5);">III.
+                  Napisz Knigę</strong>
+              </div>
+              <div style="display:flex; align-items:center; gap:16px;">
+                <span id="quest3Status"
+                  style="color:#10b981; font-weight:800; font-size:20px; text-shadow: 0 2px 8px rgba(16,185,129,0.5); padding:8px 16px; background:rgba(16,185,129,0.2); border-radius:12px;">✓
+                  Ukończone</span>
+                <button class="btn-icon-small" id="quest3Toggle"
+                  style="font-size:24px; padding:12px 16px; min-width:52px; min-height:52px; background:rgba(79,70,229,0.4); border:2px solid rgba(79,70,229,0.6); border-radius:14px; cursor:pointer; transition:all 0.2s;"
+                  title="Rozwiń/Zwiń opis">▲</button>
+              </div>
+            </div>
+            <div id="quest3Description"
+              style="display:block; margin-top:20px; padding-top:20px; border-top:2px solid rgba(139,92,246,0.3);">
+              <p
+                style="margin:0 0 20px 0; line-height:1.9; color:rgba(255,255,255,0.95); font-size:19px; font-style:italic; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">
+                "Spotkaj czarodzieja wędrującego po świecie. Aby napisać z nim księgę mądrości, musisz zebrać ogromne
+                ilości zasobów: 100 mięsiwa, 100 jabłek i 100 monet. To będzie wymagało wiele wysiłku, lecz nagroda jest
+                warta poświęcenia! Pamiętaj, iż monety najłatwiej zdobyć rozwalając legowiska potworów."
+              </p>
+              <div style="display:flex; flex-direction:column; gap:14px; margin-top:20px;">
+                <div
+                  style="padding:20px; background:linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.25)); border:3px solid rgba(245,158,11,0.5); border-radius:16px; font-size:20px; font-weight:700; text-align:center; box-shadow: 0 4px 16px rgba(245,158,11,0.3);">
+                  🍖 Mięsiwo: <span id="quest3Meat" style="font-size:24px; color:#fcd34d;">0</span>/100
+                </div>
+                <div
+                  style="padding:20px; background:linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.25)); border:3px solid rgba(239,68,68,0.5); border-radius:16px; font-size:20px; font-weight:700; text-align:center; box-shadow: 0 4px 16px rgba(239,68,68,0.3);">
+                  🍎 Jabłka: <span id="quest3Apples" style="font-size:24px; color:#fca5a5;">0</span>/100
+                </div>
+                <div
+                  style="padding:20px; background:linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.25)); border:3px solid rgba(245,158,11,0.5); border-radius:16px; font-size:20px; font-weight:700; text-align:center; box-shadow: 0 4px 16px rgba(245,158,11,0.3);">
+                  💰 Monety: <span id="quest3Gold" style="font-size:24px; color:#fcd34d;">0</span>/100
+                </div>
+              </div>
+
+              <!-- Subquesty: Zniszcz 3 legowiska każdego typu -->
+              <div style="margin-top:24px; padding-top:24px; border-top:3px solid rgba(139,92,246,0.4);">
+                <div
+                  style="font-size:22px; font-weight:800; color:rgba(255,255,255,0.95); margin-bottom:16px; text-align:center; text-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+                  ⚔️ Wyzwania Megabestii
+                </div>
+                <p
+                  style="margin:0 0 20px 0; line-height:1.7; color:rgba(255,255,255,0.9); font-size:17px; font-style:italic; text-align:center; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">
+                  Zniszcz 3 legowiska każdego typu potwora, aby pojawiła się megabestia. Pokonanie megabestii daje 30
+                  monet!
+                </p>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                  <div
+                    style="padding:16px; background:linear-gradient(135deg, rgba(139,92,246,0.15), rgba(124,58,237,0.2)); border:2px solid rgba(139,92,246,0.4); border-radius:14px; box-shadow: 0 3px 12px rgba(139,92,246,0.2);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                      <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:32px;">🐺</span>
+                        <div>
+                          <div style="font-size:18px; font-weight:700; color:rgba(255,255,255,0.95);">Wilk</div>
+                          <div style="font-size:14px; opacity:0.8;">Zniszcz 3 legowiska wilków</div>
+                        </div>
+                      </div>
+                      <div style="font-size:24px; font-weight:900; color:#a78bfa;">
+                        <span id="quest3Nest0">0</span>/3
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style="padding:16px; background:linear-gradient(135deg, rgba(139,92,246,0.15), rgba(124,58,237,0.2)); border:2px solid rgba(139,92,246,0.4); border-radius:14px; box-shadow: 0 3px 12px rgba(139,92,246,0.2);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                      <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:32px;">🐗</span>
+                        <div>
+                          <div style="font-size:18px; font-weight:700; color:rgba(255,255,255,0.95);">Dzika świnia</div>
+                          <div style="font-size:14px; opacity:0.8;">Zniszcz 3 legowiska dzików</div>
+                        </div>
+                      </div>
+                      <div style="font-size:24px; font-weight:900; color:#a78bfa;">
+                        <span id="quest3Nest1">0</span>/3
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style="padding:16px; background:linear-gradient(135deg, rgba(139,92,246,0.15), rgba(124,58,237,0.2)); border:2px solid rgba(139,92,246,0.4); border-radius:14px; box-shadow: 0 3px 12px rgba(139,92,246,0.2);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                      <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:32px;">🐍</span>
+                        <div>
+                          <div style="font-size:18px; font-weight:700; color:rgba(255,255,255,0.95);">Żmija</div>
+                          <div style="font-size:14px; opacity:0.8;">Zniszcz 3 legowiska żmij</div>
+                        </div>
+                      </div>
+                      <div style="font-size:24px; font-weight:900; color:#a78bfa;">
+                        <span id="quest3Nest2">0</span>/3
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style="padding:16px; background:linear-gradient(135deg, rgba(139,92,246,0.15), rgba(124,58,237,0.2)); border:2px solid rgba(139,92,246,0.4); border-radius:14px; box-shadow: 0 3px 12px rgba(139,92,246,0.2);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                      <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:32px;">🧟</span>
+                        <div>
+                          <div style="font-size:18px; font-weight:700; color:rgba(255,255,255,0.95);">Trup</div>
+                          <div style="font-size:14px; opacity:0.8;">Zniszcz 3 legowiska trupów</div>
+                        </div>
+                      </div>
+                      <div style="font-size:24px; font-weight:900; color:#a78bfa;">
+                        <span id="quest3Nest3">0</span>/3
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Start Game Button (Moved here) -->
+      <div id="startBtnContainer" style="display:none; margin-top: 40px; margin-bottom: 40px; text-align: center;">
+        <button class="btn btn-success" id="startGameBtn"
+          style="font-size:24px; padding:24px 48px; min-height:72px; font-weight:800; text-transform:uppercase; letter-spacing:1px; box-shadow: 0 8px 24px rgba(16,185,129,0.5);">⚔️
+          Wyrusz na Wyprawę ⚔️</button>
+      </div>
+
+      <!-- Sekcja Instrukcji -->
+      <div style="margin-bottom:40px; border-top:3px solid rgba(245,158,11,0.4); padding-top:40px;">
+        <div style="text-align:center; margin-bottom:32px;">
+          <h2
+            style="font-size:36px; font-weight:900; margin:0 0 12px 0; text-shadow: 0 4px 16px rgba(0,0,0,0.6); letter-spacing:1px; background: linear-gradient(135deg, #fbbf24, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+            ⚔️ KSIĘGA WIEDZY ⚔️</h2>
+          <p style="font-size:16px; opacity:0.8; font-style:italic;">"Poznaj tajemnice królestwa i sztukę walki"</p>
+        </div>
+
+        <div style="margin-bottom:32px;">
+          <h3
+            style="font-size:24px; font-weight:800; margin-bottom:20px; color:rgba(255,255,255,0.95); text-align:center; padding:16px; background:linear-gradient(135deg, rgba(79,70,229,0.2), rgba(67,56,202,0.25)); border:2px solid rgba(79,70,229,0.4); border-radius:16px; box-shadow: 0 4px 16px rgba(79,70,229,0.3);">
+            📱 Sztuka Walki na Urządzeniach Przenośnych</h3>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#fbbf24;">🎮 Gałka analogowa</strong> <span
+                style="opacity:0.8;">(lewy dolny róg)</span> - <em>Poruszaj się po krainie</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#fbbf24;">⚔️ Przycisk A</strong> <span style="opacity:0.8;">(prawy
+                dolny róg)</span> - <em>Atakuj mieczem</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#fbbf24;">🏹 Przycisk B</strong> <span style="opacity:0.8;">(prawy
+                dolny róg)</span> - <em>Strzelaj z łuku</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#fbbf24;">📜 Zadania</strong> <span style="opacity:0.8;">(górne
+                menu)</span> - <em>Otwórz księgę zadań</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#fbbf24;">🎒 Skarbiec</strong> <span style="opacity:0.8;">(górne
+                menu)</span> - <em>Zobacz swe skarby</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#fbbf24;">📊 Statystyki</strong> <span style="opacity:0.8;">(górne
+                menu)</span> - <em>Sprawdź swe umiejętności</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#fbbf24;">💬 Interakcja</strong> <span style="opacity:0.8;">(górne
+                menu)</span> - <em>Rozmawiaj z mieszkańcami</em>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:32px;">
+          <h3
+            style="font-size:24px; font-weight:800; margin-bottom:20px; color:rgba(255,255,255,0.95); text-align:center; padding:16px; background:linear-gradient(135deg, rgba(139,92,246,0.2), rgba(124,58,237,0.25)); border:2px solid rgba(139,92,246,0.4); border-radius:16px; box-shadow: 0 4px 16px rgba(139,92,246,0.3);">
+            🖥️ Sztuka Walki na Pulpicie</h3>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">WASD / Strzałki</strong> - <em>Poruszaj się po krainie</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">Spacja</strong> - <em>Atakuj mieczem</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">Kliknięcie myszką</strong> - <em>Strzelaj z łuku w kierunku
+                kursora</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">Q</strong> - <em>Otwórz księgę zadań</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">E</strong> - <em>Otwórz skarbiec</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">R</strong> - <em>Sprawdź statystyki</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">F</strong> - <em>Tryb interakcji (następnie kliknij
+                mieszkańca)</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#a78bfa;">ESC</strong> - <em>Zamknij otwarte okno</em>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:32px;">
+          <h3
+            style="font-size:24px; font-weight:800; margin-bottom:20px; color:rgba(255,255,255,0.95); text-align:center; padding:16px; background:linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.25)); border:2px solid rgba(16,185,129,0.4); border-radius:16px; box-shadow: 0 4px 16px rgba(16,185,129,0.3);">
+            🏰 Tajemnice Królestwa</h3>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#34d399;">🏰 Jaskinie</strong> - <em>Generują wrogów, po zniszczeniu
+                dają złoto i przedmioty</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#34d399;">🌳 Drzewa</strong> - <em>Dają jabłka, można je ścinać dla
+                drewna</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#34d399;">👩 Niewiasta</strong> - <em>Daj 50 jabłek i 50 mięsiwa, aby
+                spłodzić dziecko</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#34d399;">🧙 Czarodziej</strong> - <em>Daj 100 mięsiwa, 100 jabłek i
+                100 monet, aby napisać księgę</em>
+            </div>
+            <div
+              style="padding:18px 20px; background:linear-gradient(135deg, rgba(0,0,0,0.4), rgba(20,20,30,0.5)); border:2px solid rgba(255,255,255,0.15); border-radius:16px; font-size:17px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              <strong style="font-size:20px; color:#34d399;">❤️ Życia</strong> - <em>Startujesz z 3, dostajesz +1 za
+                każdy awans</em>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Przycisk zamknij na końcu -->
+      <button class="btn btn-secondary" id="closeQuestBtn"
+        style="margin-top:20px; font-size:20px; padding:20px 40px; min-height:64px; font-weight:700;">❌ Zamknij
+        Księgę</button>
+    </div>
+  </div>
+
+  <!-- Modal Inventory - Redesigned -->
+  <div class="modal" id="inventoryModal">
+    <div class="panel">
+      <button class="modal-close" aria-label="Zamknij">×</button>
+
+      <!-- Nagłówek - lewy górny róg -->
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; margin-top:-8px;">
+        <span style="font-size:36px; text-shadow: 0 2px 8px rgba(0,0,0,0.5);">🎒</span>
+        <h2
+          style="font-size:28px; font-weight:800; margin:0; color:rgba(255,255,255,0.95); text-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+          SKARBIEC</h2>
+      </div>
+
+      <!-- Statystyki HP i MP - Większe i bardziej widoczne - zawsze obok siebie -->
+      <div style="margin-bottom:20px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <!-- Zdrowie -->
+        <div
+          style="padding:14px; background:linear-gradient(135deg, rgba(239,68,68,0.25), rgba(220,38,38,0.3)); border:3px solid rgba(239,68,68,0.6); border-radius:16px; box-shadow: 0 4px 16px rgba(239,68,68,0.4), inset 0 2px 6px rgba(255,255,255,0.1);">
+          <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:8px;">
+            <span style="font-size:28px;">❤️</span>
+            <div style="font-size:18px; font-weight:700; color:#fca5a5; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Zdrowie
+            </div>
+          </div>
+          <div
+            style="font-size:32px; color:#fca5a5; font-weight:900; text-align:center; text-shadow: 0 2px 8px rgba(0,0,0,0.6); margin-bottom:10px; letter-spacing:1px;">
+            <span id="invHP" style="color:#fff;">0</span><span style="opacity:0.6; font-size:24px;">/</span><span
+              id="invHPMax" style="opacity:0.8;">0</span>
+          </div>
+          <div
+            style="height:12px; background:rgba(0,0,0,0.4); border-radius:10px; overflow:hidden; border:2px solid rgba(255,255,255,0.15); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">
+            <div id="invHPBar"
+              style="height:100%; background:linear-gradient(90deg, #ef4444, #f87171, #ef4444, #ef4444); box-shadow: 0 0 12px rgba(239,68,68,0.8), inset 0 1px 2px rgba(255,255,255,0.3); transition:width 0.4s cubic-bezier(0.4, 0, 0.2, 1); width:0%;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Moc -->
+        <div
+          style="padding:14px; background:linear-gradient(135deg, rgba(59,130,246,0.25), rgba(37,99,235,0.3)); border:3px solid rgba(59,130,246,0.6); border-radius:16px; box-shadow: 0 4px 16px rgba(59,130,246,0.4), inset 0 2px 6px rgba(255,255,255,0.1);">
+          <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:8px;">
+            <span style="font-size:28px;">🔷</span>
+            <div style="font-size:18px; font-weight:700; color:#93c5fd; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Moc
+            </div>
+          </div>
+          <div
+            style="font-size:32px; color:#93c5fd; font-weight:900; text-align:center; text-shadow: 0 2px 8px rgba(0,0,0,0.6); margin-bottom:10px; letter-spacing:1px;">
+            <span id="invMP" style="color:#fff;">0</span><span style="opacity:0.6; font-size:24px;">/</span><span
+              id="invMPMax" style="opacity:0.8;">0</span>
+          </div>
+          <div
+            style="height:12px; background:rgba(0,0,0,0.4); border-radius:10px; overflow:hidden; border:2px solid rgba(255,255,255,0.15); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">
+            <div id="invMPBar"
+              style="height:100%; background:linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6, #3b82f6); box-shadow: 0 0 12px rgba(59,130,246,0.8), inset 0 1px 2px rgba(255,255,255,0.3); transition:width 0.4s cubic-bezier(0.4, 0, 0.2, 1); width:0%;">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sekcja: Przedmioty regenerujące zdrowie -->
+      <div style="margin-bottom:16px;">
+        <div
+          style="font-size:20px; font-weight:800; color:#fca5a5; margin-bottom:12px; text-align:center; text-shadow: 0 2px 8px rgba(239,68,68,0.5); padding:10px; background:linear-gradient(135deg, rgba(239,68,68,0.15), rgba(220,38,38,0.2)); border-radius:10px; border:2px solid rgba(239,68,68,0.3);">
+          ❤️ Przedmioty Lecznicze
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button class="btn btn-danger" id="invAppleClick"
+            style="justify-content:space-between; align-items:center; padding:14px 18px; font-size:18px; background:linear-gradient(135deg, rgba(239,68,68,0.95), rgba(220,38,38,1)); border:3px solid rgba(239,68,68,0.9); box-shadow: 0 4px 16px rgba(239,68,68,0.4);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:28px;">🍎</span>
+              <div style="text-align:left;">
+                <div style="font-weight:700; margin-bottom:2px; font-size:16px;">Jabłka</div>
+                <div style="font-size:13px; opacity:0.9;">Regeneruje zdrowie</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="invApples" style="font-size:22px; font-weight:900; min-width:40px; text-align:right;">0</span>
+              <span style="font-size:16px; opacity:0.7;">→</span>
+            </div>
+          </button>
+
+          <button class="btn btn-danger" id="healWithApplesBtn"
+            style="justify-content:center; align-items:center; padding:14px 18px; font-size:18px; background:linear-gradient(135deg, rgba(239,68,68,0.95), rgba(220,38,38,1)); border:3px solid rgba(239,68,68,0.9); box-shadow: 0 4px 16px rgba(239,68,68,0.4); font-weight:800;">
+            <span style="font-size:24px; margin-right:8px;">❤️</span>
+            Ulecz się do pełna jabłkami
+          </button>
+
+          <button class="btn btn-danger" id="invMeatClick"
+            style="justify-content:space-between; align-items:center; padding:14px 18px; font-size:18px; background:linear-gradient(135deg, rgba(239,68,68,0.95), rgba(220,38,38,1)); border:3px solid rgba(239,68,68,0.9); box-shadow: 0 4px 16px rgba(239,68,68,0.4);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:28px;">🍖</span>
+              <div style="text-align:left;">
+                <div style="font-weight:700; margin-bottom:2px; font-size:16px;">Mięsiwo</div>
+                <div style="font-size:13px; opacity:0.9;">Regeneruje zdrowie</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="invMeat" style="font-size:22px; font-weight:900; min-width:40px; text-align:right;">0</span>
+              <span style="font-size:16px; opacity:0.7;">→</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sekcja: Przedmioty regenerujące moc -->
+      <div style="margin-bottom:16px;">
+        <div
+          style="font-size:20px; font-weight:800; color:#93c5fd; margin-bottom:12px; text-align:center; text-shadow: 0 2px 8px rgba(59,130,246,0.5); padding:10px; background:linear-gradient(135deg, rgba(59,130,246,0.15), rgba(37,99,235,0.2)); border-radius:10px; border:2px solid rgba(59,130,246,0.3);">
+          🔷 Przedmioty Magiczne
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button class="btn btn-primary" id="invMeadClick"
+            style="justify-content:space-between; align-items:center; padding:14px 18px; font-size:18px; background:linear-gradient(135deg, rgba(59,130,246,0.95), rgba(37,99,235,1)); border:3px solid rgba(59,130,246,0.9); box-shadow: 0 4px 16px rgba(59,130,246,0.4);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:28px;">🍾</span>
+              <div style="text-align:left;">
+                <div style="font-weight:700; margin-bottom:2px; font-size:16px;">Flaszka</div>
+                <div style="font-size:13px; opacity:0.9;">Regeneruje moc</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="invMead" style="font-size:22px; font-weight:900; min-width:40px; text-align:right;">0</span>
+              <span style="font-size:16px; opacity:0.7;">→</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sekcja: Narzędzia -->
+      <div style="margin-bottom:16px;">
+        <div
+          style="font-size:20px; font-weight:800; color:#34d399; margin-bottom:12px; text-align:center; text-shadow: 0 2px 8px rgba(16,185,129,0.5); padding:10px; background:linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.2)); border-radius:10px; border:2px solid rgba(16,185,129,0.3);">
+          🌱 Narzędzia
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button class="btn btn-success" id="invSeedClick"
+            style="justify-content:space-between; align-items:center; padding:14px 18px; font-size:18px; background:linear-gradient(135deg, rgba(16,185,129,0.95), rgba(5,150,105,1)); border:3px solid rgba(16,185,129,0.9); box-shadow: 0 4px 16px rgba(16,185,129,0.4);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:28px;">🌱</span>
+              <div style="text-align:left;">
+                <div style="font-weight:700; margin-bottom:2px; font-size:16px;">Ziarna</div>
+                <div style="font-size:13px; opacity:0.9;">Aktywuj zasadzanie drzew</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="invSeeds" style="font-size:22px; font-weight:900; min-width:40px; text-align:right;">0</span>
+              <span style="font-size:16px; opacity:0.7;">→</span>
+            </div>
+          </button>
+          
+          <div class="btn btn-success"
+            style="justify-content:space-between; align-items:center; padding:14px 18px; font-size:18px; background:linear-gradient(135deg, rgba(139,69,19,0.8), rgba(160,82,45,0.9)); border:3px solid rgba(139,69,19,0.9); box-shadow: 0 4px 16px rgba(139,69,19,0.4); cursor:default;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:28px;">🪵</span>
+              <div style="text-align:left;">
+                <div style="font-weight:700; margin-bottom:2px; font-size:16px;">Drewno</div>
+                <div style="font-size:13px; opacity:0.9;">Surowiec rzemieślniczy</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="invWood" style="font-size:22px; font-weight:900; min-width:40px; text-align:right;">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tryb zasadzania -->
+      <div id="plantingModeIndicator"
+        style="margin-bottom:16px; display:none; padding:14px; background:linear-gradient(135deg, rgba(16,185,129,0.25), rgba(5,150,105,0.3)); border:3px solid rgba(16,185,129,0.6); border-radius:12px; color:#10b981; font-weight:800; font-size:16px; text-align:center; box-shadow: 0 4px 16px rgba(16,185,129,0.4); text-shadow: 0 2px 6px rgba(0,0,0,0.5);">
+        <span style="font-size:24px; margin-right:8px;">🌱</span>
+        Tryb zasadzania aktywny - kliknij na mapie aby zasadzić drzewo
+      </div>
+
+      <!-- Przycisk zamknij -->
+      <button class="btn btn-secondary" id="closeInventoryBtn"
+        style="width:100%; padding:14px; font-size:18px; font-weight:700;">❌ Zamknij Skarbiec</button>
+    </div>
+  </div>
+
+  <!-- Modal Character Stats - Redesigned -->
+  <div class="modal" id="statsModal">
+    <div class="panel stats-panel">
+      <button class="modal-close" aria-label="Zamknij">×</button>
+      <div class="stats-header">
+        <h1>📊 Karta Postaci</h1>
+        <div class="stats-level-badge">
+          <span class="stats-level-icon">⭐</span>
+          <span class="stats-level-text">Poziom <span id="statsLevel">1</span></span>
+        </div>
+      </div>
+
+      <!-- Podstawowe statystyki -->
+      <div class="stats-section">
+        <h2 class="stats-section-title">❤️ Podstawowe</h2>
+        <div class="stats-grid">
+          <div class="stat-card stat-card-hp">
+            <div class="stat-card-header">
+              <span class="stat-icon">❤️</span>
+              <span class="stat-label">Zdrowie</span>
+            </div>
+            <div class="stat-value">
+              <span id="statsHP">0</span><span class="stat-separator">/</span><span id="statsHPMax">0</span>
+            </div>
+            <div class="stat-bar-container">
+              <div class="stat-bar stat-bar-hp" id="statsHPBar"></div>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card-mp">
+            <div class="stat-card-header">
+              <span class="stat-icon">🔷</span>
+              <span class="stat-label">Moc</span>
+            </div>
+            <div class="stat-value">
+              <span id="statsMP">0</span><span class="stat-separator">/</span><span id="statsMPMax">0</span>
+            </div>
+            <div class="stat-bar-container">
+              <div class="stat-bar stat-bar-mp" id="statsMPBar"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Statystyki walki -->
+      <div class="stats-section">
+        <h2 class="stats-section-title">⚔️ Walka</h2>
+        <div class="stats-grid">
+          <div class="stat-card stat-card-melee">
+            <div class="stat-card-header">
+              <span class="stat-icon">⚔️</span>
+              <span class="stat-label">Atak z Bliska</span>
+            </div>
+            <div class="stat-details">
+              <div class="stat-detail-item">
+                <span class="stat-detail-label">Siła:</span>
+                <span class="stat-detail-value" id="statsMeleeDmg">0</span>
+              </div>
+              <div class="stat-detail-item">
+                <span class="stat-detail-label">CD:</span>
+                <span class="stat-detail-value" id="statsMeleeCD">0</span><span class="stat-unit">ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card-ranged">
+            <div class="stat-card-header">
+              <span class="stat-icon">🏹</span>
+              <span class="stat-label">Atak z Daleka</span>
+            </div>
+            <div class="stat-details">
+              <div class="stat-detail-item">
+                <span class="stat-detail-label">Siła:</span>
+                <span class="stat-detail-value" id="statsRangedDmg">0</span>
+              </div>
+              <div class="stat-detail-item">
+                <span class="stat-detail-label">CD:</span>
+                <span class="stat-detail-value" id="statsRangedCD">0</span><span class="stat-unit">ms</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Statystyki ruchu i specjalne -->
+      <div class="stats-section">
+        <h2 class="stats-section-title">🏃 Ruch & Specjalne</h2>
+        <div class="stats-grid stats-grid-single">
+          <div class="stat-card stat-card-speed">
+            <div class="stat-card-header">
+              <span class="stat-icon">🏃</span>
+              <span class="stat-label">Prędkość Ruchu</span>
+            </div>
+            <div class="stat-value-large">
+              <span id="statsSpeed">0</span>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card-magnet">
+            <div class="stat-card-header">
+              <span class="stat-icon">🧲</span>
+              <span class="stat-label">Przyciąganie Dropów</span>
+            </div>
+            <div class="stat-value-large">
+              <span id="statsMagnet">0px</span>
+            </div>
+            <div class="stat-description" id="statsMagnetDesc">Poziom + bonus</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-secondary" id="closeStatsBtn" style="margin-top:24px;">❌ Zamknij</button>
+    </div>
+  </div>
+
+  <!-- Modal Woman Dialog -->
+  <div class="modal" id="womanModal">
+    <div class="panel">
+      <button class="modal-close" aria-label="Zamknij">×</button>
+      <h1>👩 Niewiasta</h1>
+      <p style="margin:20px 0; font-size:18px; line-height:1.6;">Hola! Chcesz mi spłodzić syna? Aby spłodzić mi syna
+        luby, daj mnie 50 jabłek i 50 mięsiwa kochaniutki. Nie jestem taka łatwa! A! I pamiętaj ze jest 50/50 % szansa
+        ze dropne Ci syna albo corke</p>
+      <div style="display:flex; flex-direction:column; gap:12px; margin:20px 0;">
+        <div
+          style="padding:16px; background:rgba(239,68,68,0.15); border:2px solid rgba(239,68,68,0.3); border-radius:12px; font-size:18px; font-weight:600; text-align:center;">
+          🍎 Jabłka: <span id="womanApples">0</span>/50</div>
+        <div
+          style="padding:16px; background:rgba(245,158,11,0.15); border:2px solid rgba(245,158,11,0.3); border-radius:12px; font-size:18px; font-weight:600; text-align:center;">
+          🍖 Mięsiwo: <span id="womanMeat">0</span>/50</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:20px;">
+        <button class="btn btn-primary" id="giveAppleBtn">🍎 Daj jabłko (1)</button>
+        <button class="btn btn-success" id="giveAllApplesBtn">🍎 Daj wszystkie jabłka</button>
+        <button class="btn btn-primary" id="giveMeatBtn">🍖 Daj mięsiwo (1)</button>
+        <button class="btn btn-success" id="giveAllMeatBtn">🍖 Daj wszystkie mięsiwo</button>
+        <button class="btn btn-secondary" id="closeWomanBtn">❌ Zamknij</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Wizard Dialog -->
+  <div class="modal" id="wizardModal">
+    <div class="panel">
+      <button class="modal-close" aria-label="Zamknij">×</button>
+      <h1>🧙 Czarodziej</h1>
+      <p style="margin:20px 0; font-size:18px; line-height:1.6;">Aby napisać książkę, potrzebuję 100 mięsiwa, 100 jabłek
+        i 100 monet.</p>
+      <div style="display:flex; flex-direction:column; gap:12px; margin:20px 0;">
+        <div
+          style="padding:16px; background:rgba(245,158,11,0.15); border:2px solid rgba(245,158,11,0.3); border-radius:12px; font-size:18px; font-weight:600; text-align:center;">
+          🍖 Mięsiwo: <span id="wizardMeat">0</span>/100</div>
+        <div
+          style="padding:16px; background:rgba(239,68,68,0.15); border:2px solid rgba(239,68,68,0.3); border-radius:12px; font-size:18px; font-weight:600; text-align:center;">
+          🍎 Jabłka: <span id="wizardApples">0</span>/100</div>
+        <div
+          style="padding:16px; background:rgba(245,158,11,0.15); border:2px solid rgba(245,158,11,0.3); border-radius:12px; font-size:18px; font-weight:600; text-align:center;">
+          💰 Monety: <span id="wizardGold">0</span>/100</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:20px;">
+        <button class="btn btn-primary" id="wizardGiveMeatBtn">🍖 Daj mięsiwo (1)</button>
+        <button class="btn btn-success" id="wizardGiveAllMeatBtn">🍖 Daj wszystkie mięsiwo</button>
+        <button class="btn btn-primary" id="wizardGiveAppleBtn">🍎 Daj jabłko (1)</button>
+        <button class="btn btn-success" id="wizardGiveAllApplesBtn">🍎 Daj wszystkie jabłka</button>
+        <button class="btn btn-primary" id="wizardGiveGoldBtn">💰 Daj monetę (1)</button>
+        <button class="btn btn-success" id="wizardGiveAllGoldBtn">💰 Daj wszystkie monety</button>
+        <button class="btn btn-success" id="wizardCompleteBtn">📖 Napisz książkę</button>
+        <button class="btn btn-secondary" id="closeWizardBtn">❌ Zamknij</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Start Screen -->
+
+  <!-- Developer Menu -->
+  <div class="modal" id="devMenuModal" style="display:none;">
+    <div class="panel" style="max-width:600px;">
+      <button class="modal-close" aria-label="Zamknij">×</button>
+      <h1>🛠️ Menu Deweloperskie</h1>
+
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:24px;">
+        <h2 style="font-size:20px; margin:0; color:#fbbf24; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Spawn Megabestii
+        </h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="btn btn-warning" id="devSpawnWolf">🐺 Spawn Wilk</button>
+          <button class="btn btn-warning" id="devSpawnBoar">🐗 Spawn Dzik</button>
+          <button class="btn btn-warning" id="devSpawnSnake">🐍 Spawn Żmija</button>
+          <button class="btn btn-warning" id="devSpawnZombie">🧟 Spawn Trup</button>
+        </div>
+
+        <h2 style="font-size:20px; margin:16px 0 0 0; color:#ff6b00; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Spawn
+          Ultra Megabestii</h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,107,0,0.9), rgba(255,149,0,0.95)); border-color:rgba(255,107,0,0.8);"
+            id="devSpawnUltraWolf">🐺 Spawn Ultra Wilk</button>
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,107,0,0.9), rgba(255,149,0,0.95)); border-color:rgba(255,107,0,0.8);"
+            id="devSpawnUltraBoar">🐗 Spawn Ultra Dzik</button>
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,107,0,0.9), rgba(255,149,0,0.95)); border-color:rgba(255,107,0,0.8);"
+            id="devSpawnUltraSnake">🐍 Spawn Ultra Żmija</button>
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,107,0,0.9), rgba(255,149,0,0.95)); border-color:rgba(255,107,0,0.8);"
+            id="devSpawnUltraZombie">🧟 Spawn Ultra Trup</button>
+        </div>
+        <h2 style="font-size:20px; margin:16px 0 0 0; color:#ff0000; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Spawn
+          HIPER ULTRA Megabestii</h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,0,0,0.9), rgba(255,50,50,0.95)); border-color:rgba(255,0,0,0.8);"
+            id="devSpawnHiperUltraWolf">🐺🐺 Spawn HIPER ULTRA Wilk</button>
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,0,0,0.9), rgba(255,50,50,0.95)); border-color:rgba(255,0,0,0.8);"
+            id="devSpawnHiperUltraBoar">🐗🐗 Spawn HIPER ULTRA Dzik</button>
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,0,0,0.9), rgba(255,50,50,0.95)); border-color:rgba(255,0,0,0.8);"
+            id="devSpawnHiperUltraSnake">🐍🐍 Spawn HIPER ULTRA Żmija</button>
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(255,0,0,0.9), rgba(255,50,50,0.95)); border-color:rgba(255,0,0,0.8);"
+            id="devSpawnHiperUltraZombie">🧟 Spawn HIPER ULTRA Trup</button>
+        </div>
+
+        <h2 style="font-size:20px; margin:16px 0 0 0; color:#10b981; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Spawn Inne
+        </h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="btn btn-success" id="devSpawnChild">👶 Spawn Dziecko</button>
+          <button class="btn btn-success" id="devSpawnNest">🏰 Spawn Legowisko</button>
+          <button class="btn btn-success" id="devSpawnEnemy">👹 Spawn Wróg</button>
+          <button class="btn btn-success" id="devSpawnTree">🌳 Spawn Drzewo</button>
+        </div>
+
+        <h2 style="font-size:20px; margin:16px 0 0 0; color:#3b82f6; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Zasoby
+        </h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="btn btn-primary" id="devAddGold">💰 +100 Monet</button>
+          <button class="btn btn-primary" id="devAddXP">✨ +1000 XP</button>
+          <button class="btn btn-primary" id="devAddLevel">⭐ +1 Poziom</button>
+          <button class="btn btn-primary" id="devFullHeal">❤️ Pełne HP/MP</button>
+        </div>
+
+        <h2 style="font-size:20px; margin:16px 0 0 0; color:#a78bfa; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">
+          Achievements</h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(139,92,246,0.9), rgba(124,58,237,0.95)); border-color:rgba(139,92,246,0.8);"
+            id="devUnlockAll">🏆 Odblokuj Wszystkie</button>
+          <button class="btn"
+            style="background:linear-gradient(135deg, rgba(139,92,246,0.9), rgba(124,58,237,0.95)); border-color:rgba(139,92,246,0.8);"
+            id="devCompleteQuests">✅ Ukończ Questy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Debug HUD -->
+  <div id="debugHUD">
+    <div class="debug-line">FPS: <span id="debugFPS">0</span></div>
+    <div id="debugLogs"></div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+
+</html>
