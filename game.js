@@ -74,6 +74,7 @@ let state = JSON.parse(localStorage.getItem('chrobry_save_v2')) || {
   // New: trees and home
   trees: [],
   home: { x: 3000, y: 2800 }, // Domek nad graczem na starcie
+  homeGuards: [], // Strażnicy wokół domu: { x, y, attackTimer, id }
   // New: nests/spawners for enemies
   nests: [], // Array of nests: { type: enemyIndex, x, y, hp, hpMax, spawnTimer, nextSpawn, id, respawnTimer }
   nestRespawns: [], // Array of pending respawns: { type: enemyIndex, timer: 30000 }
@@ -1057,6 +1058,26 @@ const CRAFTING_RECIPES = [
       state.mp = state.mpMax;
       animateBar('mp', (oldMP / state.mpMax) * 100, 100);
       toast('🔷 Pełna moc!');
+    }
+  },
+  {
+    id: 'home_guard',
+    name: '🛡️ Strażnik Domowy',
+    desc: 'Broni domu, zadaje 30 obrażeń potworom',
+    cost: { wood: 15, gold: 10, meat: 5 },
+    action: () => {
+      // Spawn guard around home in a circle
+      if (!state.homeGuards) state.homeGuards = [];
+      const guardCount = state.homeGuards.length;
+      const ang = (guardCount * Math.PI * 2 / Math.max(guardCount + 1, 4)) + rand(-0.3, 0.3);
+      const dist = 120 + rand(0, 40);
+      state.homeGuards.push({
+        x: state.home.x + Math.cos(ang) * dist,
+        y: state.home.y + Math.sin(ang) * dist,
+        attackTimer: 0,
+        id: Math.random().toString(36).slice(2)
+      });
+      toast(`🛡️ Strażnik #${state.homeGuards.length} staje na straży domu!`);
     }
   }
 ];
@@ -4408,6 +4429,65 @@ function step(dt) {
     spawnPickup(Math.random() < .5 ? 'meat' : 'mead', rand(0, state.world.width), rand(0, state.world.height), undefined, dropDir);
   }
 
+  // === Home Guards AI ===
+  if (state.homeGuards && state.homeGuards.length > 0) {
+    for (const guard of state.homeGuards) {
+      if (guard.attackTimer === undefined) guard.attackTimer = 0;
+      if (guard.attackTimer > 0) {
+        guard.attackTimer -= dt;
+      } else {
+        // Find nearest enemy to guard
+        let nearest = null;
+        let minDist = 250; // Max attack range
+        
+        // Check normal enemies
+        for (const e of state.enemies) {
+          let dx = e.x - guard.x, dy = e.y - guard.y;
+          if (Math.abs(dx) > state.world.width / 2) dx = dx > 0 ? dx - state.world.width : dx + state.world.width;
+          if (Math.abs(dy) > state.world.height / 2) dy = dy > 0 ? dy - state.world.height : dy + state.world.height;
+          const dist = Math.hypot(dx, dy);
+          if (dist < minDist) {
+            minDist = dist;
+            nearest = e;
+          }
+        }
+        
+        // Check megabeasts if no normal enemy close
+        if (!nearest) {
+          for (const mb of state.megabeasts) {
+            let dx = mb.x - guard.x, dy = mb.y - guard.y;
+            if (Math.abs(dx) > state.world.width / 2) dx = dx > 0 ? dx - state.world.width : dx + state.world.width;
+            if (Math.abs(dy) > state.world.height / 2) dy = dy > 0 ? dy - state.world.height : dy + state.world.height;
+            const dist = Math.hypot(dx, dy);
+            if (dist < minDist) {
+              minDist = dist;
+              nearest = mb;
+            }
+          }
+        }
+
+        if (nearest) {
+          nearest.hp -= 30;
+          guard.attackTimer = 2000; // 2 seconds between attacks
+          enemyHitFlashes[nearest.id] = 200;
+          
+          // Visual attack effect (particles/line)
+          for (let i = 0; i < 5; i++) {
+            particles.push({
+              x: guard.x, y: guard.y,
+              vx: (nearest.x - guard.x) / 10 + rand(-2, 2),
+              vy: (nearest.y - guard.y) / 10 + rand(-2, 2),
+              color: '#fbbf24', size: 3, t: 300
+            });
+          }
+          
+          // Floating feedback
+          fly.push({ x: nearest.x, y: nearest.y, msg: '-30', color: '#fbbf24', size: 20, t: 800, vx: 0, vy: 0 });
+        }
+      }
+    }
+  }
+
   // === Ult cooldown ===
   if (state.ultCooldown > 0) state.ultCooldown -= dt;
 
@@ -4518,6 +4598,16 @@ function draw() {
   renderWithWrapAround(state.home.x, state.home.y, (s) => {
     ctx.fillText('🏠', s.x, s.y);
   });
+
+  // Home Guards rendering
+  if (state.homeGuards && state.homeGuards.length > 0) {
+    ctx.font = '36px "Apple Color Emoji", "Segoe UI Emoji"';
+    for (const guard of state.homeGuards) {
+      renderWithWrapAround(guard.x, guard.y, (s) => {
+        ctx.fillText('🛡️', s.x, s.y);
+      });
+    }
+  }
 
   // Megabeasts - większe i bardziej widoczne niż normalne potwory
   ctx.font = '80px "Apple Color Emoji", "Segoe UI Emoji"'; // Megabestie są większe
